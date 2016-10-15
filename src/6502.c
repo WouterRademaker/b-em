@@ -14,6 +14,7 @@
 #include "mem.h"
 #include "model.h"
 #include "mouse.h"
+#include "music5000.h"
 #include "serial.h"
 #include "sid_b-em.h"
 #include "sound.h"
@@ -212,6 +213,13 @@ void writemem(uint16_t addr, uint8_t val)
                 } else {
                         polltime(1);
                 }
+        }
+
+        if (sound_music5000) {
+           if (addr >= 0xFCFF && addr <= 0xFDFF) {
+              music5000_write(addr, val);
+              return;
+           }
         }
 
         switch (addr & ~3) {

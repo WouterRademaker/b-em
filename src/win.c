@@ -148,10 +148,11 @@ static void initmenu()
         else if (vid_pal)       CheckMenuItem(hmenu, IDM_VIDEO_PAL,        MF_CHECKED);
         else                    CheckMenuItem(hmenu, IDM_VIDEO_LINEDBL,    MF_CHECKED);
 
-        if (sound_internal) CheckMenuItem(hmenu, IDM_SOUND_INTERNAL, MF_CHECKED);
-        if (sound_beebsid)  CheckMenuItem(hmenu, IDM_SOUND_BEEBSID,  MF_CHECKED);
-        if (sound_ddnoise)  CheckMenuItem(hmenu, IDM_SOUND_DDNOISE,  MF_CHECKED);
-        if (sound_tape)     CheckMenuItem(hmenu, IDM_SOUND_TAPE,     MF_CHECKED);
+        if (sound_internal)  CheckMenuItem(hmenu, IDM_SOUND_INTERNAL,  MF_CHECKED);
+        if (sound_beebsid)   CheckMenuItem(hmenu, IDM_SOUND_BEEBSID,   MF_CHECKED);
+        if (sound_music5000) CheckMenuItem(hmenu, IDM_SOUND_MUSIC5000, MF_CHECKED);
+        if (sound_ddnoise)   CheckMenuItem(hmenu, IDM_SOUND_DDNOISE,   MF_CHECKED);
+        if (sound_tape)      CheckMenuItem(hmenu, IDM_SOUND_TAPE,      MF_CHECKED);
 
         CheckMenuItem(hmenu, IDM_SOUND_FILTER, (sound_filter) ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(hmenu, IDM_WAVE_SQUARE + curwave, MF_CHECKED);
@@ -698,9 +699,13 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                         sound_beebsid = !sound_beebsid;
                         CheckMenuItem(hmenu, IDM_SOUND_BEEBSID, (sound_beebsid) ? MF_CHECKED : MF_UNCHECKED);
                         break;
+                        case IDM_SOUND_MUSIC5000:
+                        sound_music5000 = !sound_music5000;
+                        CheckMenuItem(hmenu, IDM_SOUND_MUSIC5000, (sound_music5000) ? MF_CHECKED : MF_UNCHECKED);
+                        break;
                         case IDM_SOUND_DAC:
                         sound_dac = !sound_dac;
-                        CheckMenuItem(hmenu, IDM_SOUND_BEEBSID, (sound_dac) ? MF_CHECKED : MF_UNCHECKED);
+                        CheckMenuItem(hmenu, IDM_SOUND_DAC, (sound_dac) ? MF_CHECKED : MF_UNCHECKED);
                         break;
                         case IDM_SOUND_DDNOISE:
                         sound_ddnoise = !sound_ddnoise;
