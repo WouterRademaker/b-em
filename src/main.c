@@ -2,10 +2,10 @@
   Main loop + start/finish code*/
 
 #include <allegro.h>
+
 #ifdef WIN32
 #include <winalleg.h>
 #endif
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,6 +34,7 @@
 #include "pal.h"
 #endif
 #include "savestate.h"
+#include "scsi.h"
 #include "serial.h"
 #include "sid_b-em.h"
 #include "sn76489.h"
@@ -47,6 +48,7 @@
 #include "sysvia.h"
 #include "uef.h"
 #include "uservia.h"
+#include "vdfs.h"
 #include "video.h"
 #include "video_render.h"
 #include "wd1770.h"
@@ -63,33 +65,6 @@
 
 int autoboot=0;
 int joybutton[2];
-
-FILE *arclog;
-void rpclog(const char *format, ...)
-{
-        char buf[256];
-                va_list ap;
- return;
-        if (!arclog) arclog=fopen("b-emlog.txt","wt");
-
-        va_start(ap, format);
-        vsprintf(buf, format, ap);
-        va_end(ap);
-        fputs(buf, arclog);
-        fflush(arclog);
-}
-
-void bem_errorf(const char *fmt, ...)
-{
-        char buf[256];
-        va_list ap;
-
-        va_start(ap, fmt);
-        vsnprintf(buf, sizeof buf, fmt, ap);
-        va_end(ap);
-
-        bem_error(buf);
-}
 
 int printsec;
 void secint()
@@ -117,6 +92,8 @@ void main_reset()
         acia_reset();
         wd1770_reset();
         i8271_reset();
+        scsi_reset();
+        vdfs_reset();
         sid_reset();
         music5000_reset();
         sn_init();
@@ -133,6 +110,8 @@ void main_init(int argc, char *argv[])
         char t[512];
         int c;
         int tapenext = 0, discnext = 0;
+
+        debug_open();
 
         startblit();
 
@@ -152,7 +131,7 @@ void main_init(int argc, char *argv[])
 
         for (c = 1; c < argc; c++)
         {
-//                rpclog("%i : %s\n",c,argv[c]);
+//                bem_debugf("%i : %s",c,argv[c]);
 /*                if (!strcasecmp(argv[c],"-1770"))
                 {
                         I8271=0;
@@ -267,7 +246,9 @@ void main_init(int argc, char *argv[])
         adf_init();
         fdi_init();
 
+        scsi_init();
         ide_init();
+        vdfs_init();
 
         debug_start();
 
@@ -384,6 +365,8 @@ void main_run()
 
 void main_close()
 {
+        debug_kill();
+
 #ifdef WIN32
         timeEndPeriod(1);
 #endif
@@ -402,12 +385,15 @@ void main_close()
         n32016_close();
         disc_close(0);
         disc_close(1);
+        scsi_close();
         ide_close();
+        vdfs_close();
         ddnoise_close();
         tapenoise_close();
 
         al_close();
         video_close();
+        debug_close();
 }
 
 void changetimerspeed(int i)

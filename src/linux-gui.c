@@ -18,11 +18,13 @@
 #include "mouse.h"
 #include "music5000.h"
 #include "savestate.h"
+#include "scsi.h"
 #include "sid_b-em.h"
 #include "sound.h"
 #include "sn76489.h"
 #include "tape.h"
 #include "tube.h"
+#include "vdfs.h"
 #include "video_render.h"
 
 
@@ -35,15 +37,12 @@ int emuspeed = 4;
 void setejecttext(int d, char *s)
 {
 }
-void setquit()
-{
-}
 
 extern int quited;
 extern int windx,windy;
 
 MENU filemenu[6];
-MENU discmenu[8];
+MENU discmenu[12];
 MENU tapespdmenu[3];
 MENU tapemenu[5];
 MENU modelmenu[17];
@@ -65,8 +64,8 @@ MENU ddvolmenu[4];
 MENU soundmenu[12];
 MENU keymenu[3];
 MENU mousemenu[2];
-MENU idemenu[2];
-MENU settingsmenu[8];
+MENU hdiskmenu[4];
+MENU settingsmenu[7];
 MENU miscmenu[3];
 MENU speedmenu[11];
 MENU mainmenu[6];
@@ -74,9 +73,10 @@ MENU mainmenu[6];
 void gui_update()
 {
         int x;
-        discmenu[4].flags = (writeprot[0]) ? D_SELECTED : 0;
-        discmenu[5].flags = (writeprot[1]) ? D_SELECTED : 0;
-        discmenu[6].flags = (defaultwriteprot) ? D_SELECTED : 0;
+        discmenu[5].flags = (writeprot[0]) ? D_SELECTED : 0;
+        discmenu[6].flags = (writeprot[1]) ? D_SELECTED : 0;
+        discmenu[7].flags = (defaultwriteprot) ? D_SELECTED : 0;
+        discmenu[9].flags = (vdfs_enabled) ? D_SELECTED : 0;
         tapespdmenu[0].flags = (!fasttape) ? D_SELECTED : 0;
         tapespdmenu[1].flags = (fasttape)  ? D_SELECTED : 0;
         for (x = 0; x < 16; x++) modelmenu[x].flags = 0;
@@ -113,7 +113,8 @@ void gui_update()
         keymenu[1].flags = (keyas) ? D_SELECTED : 0;
         mousemenu[0].flags = (mouse_amx) ? D_SELECTED : 0;
         for (x = 0; x < 10; x++) speedmenu[x].flags = (emuspeed == (intptr_t)speedmenu[x].dp) ? D_SELECTED : 0;
-        idemenu[0].flags = (ide_enable) ? D_SELECTED : 0;
+        hdiskmenu[1].flags = (ide_enable) ? D_SELECTED : 0;
+        hdiskmenu[2].flags = (scsi_enabled) ? D_SELECTED : 0;
 }
 
 int gui_keydefine();
@@ -182,38 +183,46 @@ MENU filemenu[6]=
         {NULL, NULL, NULL, 0, NULL}
 };
 
-int gui_load0()
+static int gui_load_drive(int drive, const char *prompt)
 {
         char tempname[260];
         int ret;
         int xsize = windx - 32, ysize = windy - 16;
-        memcpy(tempname, discfns[0], 260);
-        ret = file_select_ex("Please choose a disc image", tempname, "SSD;DSD;IMG;ADF;ADL;FDI", 260, xsize, ysize);
+        memcpy(tempname, discfns[drive], 260);
+        ret = file_select_ex(prompt, tempname, "SSD;DSD;IMG;ADF;ADL;FDI", 260, xsize, ysize);
         if (ret)
         {
-                disc_close(0);
-                memcpy(discfns[0], tempname, 260);
-                disc_load(0, discfns[0]);
-                if (defaultwriteprot) writeprot[0] = 1;
+                disc_close(drive);
+                memcpy(discfns[drive], tempname, 260);
+                disc_load(drive, discfns[drive]);
+                if (defaultwriteprot)
+                        writeprot[drive] = 1;
         }
         gui_update();
+        return ret;
+}
+
+int gui_autoboot()
+{
+        int ret;
+
+        if ((ret = gui_load_drive(0, "Please choose a disc image to autoboot in drive 0/2")))
+        {
+                main_reset();
+                autoboot = 150;
+        }
         return D_O_K;
 }
+
+int gui_load0()
+{
+        gui_load_drive(0, "Please choose a disc image to load in drive 0/2");
+        return D_O_K;
+}
+
 int gui_load1()
 {
-        char tempname[260];
-        int ret;
-        int xsize = windx - 32, ysize = windy - 16;
-        memcpy(tempname, discfns[1], 260);
-        ret = file_select_ex("Please choose a disc image", tempname, "SSD;DSD;IMG;ADF;ADL;FDI", 260, xsize, ysize);
-        if (ret)
-        {
-                disc_close(1);
-                memcpy(discfns[1], tempname, 260);
-                disc_load(1, discfns[1]);
-                if (defaultwriteprot) writeprot[1] = 1;
-        }
-        gui_update();
+        gui_load_drive(1, "Please choose a disc image to load in drive 1/3");
         return D_O_K;
 }
 
@@ -251,15 +260,89 @@ int gui_wprotd()
         return D_O_K;
 }
 
-MENU discmenu[8]=
+int gui_hdisk()
 {
-        {"Load disc :&0/2...",      gui_load0,  NULL, 0, NULL},
-        {"Load disc :&1/3...",      gui_load1,  NULL, 0, NULL},
-        {"Eject disc :0/2",         gui_eject0, NULL, 0, NULL},
-        {"Eject disc :1/3",         gui_eject1, NULL, 0, NULL},
-        {"Write protect disc :0/2", gui_wprot0, NULL, 0, NULL},
-        {"Write protect disc :1/3", gui_wprot1, NULL, 0, NULL},
-        {"Default write protect",   gui_wprotd, NULL, 0, NULL},
+        intptr_t sel = (intptr_t)active_menu->dp;
+        int changed = 0;
+
+        if (ide_enable)
+        {
+                if (sel != 0)
+                {
+                        ide_enable = 0;
+                        changed = 1;
+                }
+        }
+        else
+        {
+                if (sel == 0)
+                {
+                        ide_enable = 1;
+                        changed = 1;
+                }
+        }
+        if (scsi_enabled)
+        {
+                if (sel != 1)
+                {
+                        scsi_enabled = 0;
+                        changed = 1;
+                }
+        }
+        else
+        {
+                if (sel == 1)
+                {
+                        scsi_enabled = 1;
+                        changed = 1;
+                }
+        }
+        if (changed)
+                main_reset();
+        gui_update();
+        return D_O_K;
+}
+
+MENU hdiskmenu[4]=
+{
+        {"None",gui_hdisk,NULL,0,(void *)-1},
+        {"IDE", gui_hdisk,NULL,0,(void *)0},
+        {"SCSI", gui_hdisk,NULL,0,(void *)1},
+        {NULL, NULL, NULL, 0, NULL}
+};
+
+int gui_vdfs_en() {
+        vdfs_enabled = !vdfs_enabled;
+        gui_update();
+        return D_O_K;
+}
+
+int gui_vdfs_root() {
+        char tempname[260];
+        int ret;
+        int xsize = windx - 32, ysize = windy - 16;
+        strncpy(tempname, vdfs_get_root(), sizeof(tempname));
+        memcpy(tempname, discfns[1], 260);
+        ret = file_select_ex("Please select VDFS root directory", tempname, NULL, 260, xsize, ysize);
+        if (ret)
+            vdfs_set_root(tempname);
+        gui_update();
+        return D_O_K;
+}
+
+MENU discmenu[12]=
+{
+        {"Autoboot disc in 0/2",    gui_autoboot,  NULL, 0, NULL },
+        {"Load disc :&0/2...",      gui_load0,     NULL, 0, NULL},
+        {"Load disc :&1/3...",      gui_load1,     NULL, 0, NULL},
+        {"Eject disc :0/2",         gui_eject0,    NULL, 0, NULL},
+        {"Eject disc :1/3",         gui_eject1,    NULL, 0, NULL},
+        {"Write protect disc :0/2", gui_wprot0,    NULL, 0, NULL},
+        {"Write protect disc :1/3", gui_wprot1,    NULL, 0, NULL},
+        {"Default write protect",   gui_wprotd,    NULL, 0, NULL},
+        {"&Hard Disc",              NULL, hdiskmenu,  0, NULL},
+        {"Enable VDFS",             gui_vdfs_en,   NULL, 0, NULL},
+        {"Choose VDFS Root",        gui_vdfs_root, NULL, 0, NULL},
         {NULL, NULL, NULL, 0, NULL}
 };
 
@@ -648,21 +731,7 @@ MENU mousemenu[2] =
 };
 
 
-int gui_ide()
-{
-        ide_enable = !ide_enable;
-        main_reset();
-        gui_update();
-        return D_O_K;
-}
-
-MENU idemenu[2]=
-{
-        {"&Enable IDE hard discs", gui_ide, NULL, 0, NULL},
-        {NULL, NULL, NULL, 0, NULL}
-};
-
-MENU settingsmenu[8]=
+MENU settingsmenu[7]=
 {
         {"&Model",            NULL, modelmenu, 0, NULL},
         {"&Second processor", NULL, tubemenu,  0, NULL},
@@ -670,7 +739,6 @@ MENU settingsmenu[8]=
         {"&Sound",            NULL, soundmenu, 0, NULL},
         {"&Keyboard",         NULL, keymenu,   0, NULL},
         {"&Mouse",            NULL, mousemenu, 0, NULL},
-        {"&IDE",              NULL, idemenu,   0, NULL},
         {NULL, NULL, NULL, 0, NULL}
 };
 
